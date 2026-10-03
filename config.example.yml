@@ -1,0 +1,42 @@
+# Copy to config.yml and edit. Commit config.yml in your private repo
+# (it has no secrets — those stay in GitHub Actions repository secrets).
+
+# Which mail to consider each run (IMAP, read-only).
+mail:
+  # IMAP folder / Gmail label. Examples: INBOX, newsletters
+  label: INBOX
+
+  # Only consider messages From these addresses (case-insensitive
+  # substring match on the From header). Empty list = all senders
+  # in the label (fine for a sandbox inbox; too broad for main Gmail).
+  senders:
+    - newsletter@example.com
+    # - city@localpaper.com
+
+  # Ignore mail older than this many days.
+  lookback_days: 3
+
+  # Hard cap on messages processed per run.
+  max_messages: 20
+
+# Pull app code from the public template at the start of each Action run.
+# Template copies are not forks — without this, they never receive updates.
+upstream:
+  # Set true in your private repo after pointing url at the public template.
+  auto_sync: false
+
+  url: https://github.com/veatch/gmail_digest.git
+  # Prefer a release tag once they exist; main is fine while iterating.
+  ref: main
+
+  # Paths replaced from upstream. state/ and config.yml are never listed.
+  paths:
+    - src
+    - scripts
+    - docs
+    - .github/workflows/digest.yml
+    - pyproject.toml
+    - uv.lock
+    - config.example.yml
+    - .python-version
+    - .gitignore

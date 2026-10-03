@@ -181,9 +181,9 @@ newsletter-digest/
 
 ## Next steps
 
-1. Resolve the open questions above (read location, default LLM, alert threshold) and sketch `config.example.yml`.
-2. Next code slice: IMAP header fetch (From / Subject / Date) → Telegram list (still no LLM).
-3. Then: config-driven sender/label filter + `state/state.json` processed-ID tracking + state commit.
-4. Core modules after that: Telegram polling and chat-ID check, HTML cleaning, LLM digest + profile rewrite.
-5. Add optional upstream sync step to the workflow; document manual upgrade path.
+1. Resolve the open questions above (read location, default LLM, alert threshold).
+2. ~~Sketch `config.example.yml` + opt-in path-scoped upstream sync in the workflow.~~
+3. Next code slice: IMAP header fetch (From / Subject / Date) → Telegram list (still no LLM), using `mail.*` config.
+4. Then: config-driven sender/label filter + `state/state.json` processed-ID tracking + state commit.
+5. Core modules after that: Telegram polling and chat-ID check, HTML cleaning, LLM digest + profile rewrite.
 6. Write the README with setup and upgrade notes.
