@@ -13,7 +13,10 @@ It will be released as a **public project** that other people can clone and run 
 | Language | **Python** |
 | Hosting / scheduling | **GitHub Actions** daily cron |
 | Distribution | **Public template repository**. Each user clicks "Use this template" to create their **own private copy** (not a fork) |
+| Template updates | **Opt-in path-scoped sync** at the start of each Action run (see below). Template copies are not forks, so GitHub will not sync them automatically |
 | State | Committed back to the user's own private copy using the built-in workflow token (no second repo, no personal access token) |
+| Mail selection config | User-edited YAML (`config.yml`, from `config.example.yml`): senders and/or Gmail label, lookback, upstream sync settings. Not rewritten by the bot |
+| Runtime state | Git-committed under `state/`: preference profile, changelog, Telegram `update_id`, processed Message-IDs. Mailbox is never modified |
 | Delivery | **Telegram bot** instead of email |
 | Purpose | Newsletters already land in the main Gmail and often go unopened; the bot flags noteworthy editions rather than replacing them |
 | Feedback loop | **Reply-to-update**: reply to the bot with likes and dislikes |
@@ -32,17 +35,38 @@ It will be released as a **public project** that other people can clone and run 
 2. **Default LLM provider.** Make it configurable (Gemini free tier, Claude Haiku, or others) and pick one default for the quick-start.
 3. **How "noteworthy" is decided.** Alert only when something clears a threshold, or always send a short daily digest?
 
+## Template updates (private copies)
+
+"Use this template" creates an independent repo with **no upstream link**. Updates are a deliberate sync, not something GitHub wires up.
+
+**Chosen approach:** optional auto-sync at the **start** of the digest workflow.
+
+- Config (`config.yml`):
+  ```yaml
+  upstream:
+    auto_sync: true
+    url: https://github.com/<org>/newsletter-digest.git
+    ref: v0.3.0   # prefer release tags once stable; main is fine early on
+  ```
+- Sync is **path-scoped**, not a full merge. Checkout only allowlisted paths from upstream (e.g. `src/`, `.github/workflows/digest.yml`, `pyproject.toml`, `uv.lock`, shared prompts). **Never** overwrite `state/`, the user's `config.yml`, or secrets.
+- Workflow needs `contents: write`. Fetching a public template needs no token; pushing back uses `GITHUB_TOKEN`.
+- On sync failure or conflict: skip the upgrade, Telegram a short notice, and continue the digest on the current tree so a bad upstream cannot brick daily runs.
+- Keep the workflow `concurrency` group so sync + state commits cannot race.
+
+Document a manual fallback in the README (`git fetch` + same path checkout) for users who leave `auto_sync` off.
+
 ## Pipeline
 
 Each scheduled run:
 
-1. **Poll Telegram** for messages since the last processed `update_id`. Accept only the configured chat ID.
-2. **Update the profile** if there are new messages: LLM rewrites it; the old version goes to the changelog.
-3. **Fetch new newsletters** over IMAP, read-only. Track processed message IDs in the state file rather than modifying the mailbox.
-4. **Clean the content:** strip HTML, footers, and tracking links to save tokens.
-5. **Summarize and rank** with the profile in the prompt.
-6. **Send the alert** to Telegram (HTML parse mode; split if over 4096 characters).
-7. **Commit state** (profile, changelog, `update_id`, processed IDs).
+1. **Optional upstream sync** (if `upstream.auto_sync`): fetch the configured ref, update allowlisted paths, commit and push if anything changed.
+2. **Poll Telegram** for messages since the last processed `update_id`. Accept only the configured chat ID.
+3. **Update the profile** if there are new messages: LLM rewrites it; the old version goes to the changelog.
+4. **Fetch new newsletters** over IMAP, read-only, using `config.yml` filters (senders and/or label). Track processed message IDs in the state file rather than modifying the mailbox.
+5. **Clean the content:** strip HTML, footers, and tracking links to save tokens.
+6. **Summarize and rank** with the profile in the prompt.
+7. **Send the alert** to Telegram (HTML parse mode; split if over 4096 characters).
+8. **Commit state** (profile, changelog, `update_id`, processed IDs).
 
 ## Digest design
 
@@ -64,7 +88,7 @@ Each scheduled run:
 
 - Newsletter content is **untrusted input**. The summarizer gets no tools and cannot act on instructions found in emails.
 - The only trusted instruction channel is the configured Telegram chat ID. Messages from anyone else are ignored.
-- The bot token, app password, and LLM key live in GitHub Secrets, never in the repo.
+- The bot token, app password, and LLM key live in **repository secrets** (Settings → Secrets and variables → Actions → Repository secrets), never in the repo. No GitHub Environment is required.
 - The bot can only send to one hardcoded chat.
 - If the token leaks, send `/revoke` to BotFather to rotate it.
 - Use a **private** copy of the repo, since the profile and changelog are personal.
@@ -124,16 +148,16 @@ Each scheduled run:
 4. **Find your chat ID.** Ideally a `setup` script does this: paste the token, send your bot a message, and the script prints the ID and sends a test message. (Manual fallback: open `https://api.telegram.org/bot<TOKEN>/getUpdates` and read `message.chat.id`.)
 5. **Create a Gmail app password** (requires 2-step verification) and enable IMAP.
 6. **Get an LLM API key** from the chosen provider.
-7. **Add GitHub secrets:** bot token, chat ID, Gmail address, app password, LLM key.
-8. **Edit the config** (newsletter senders or label, schedule) and run the workflow manually once to test.
+7. **Add repository secrets** (not environment secrets): bot token, chat ID, Gmail address, app password, LLM key.
+8. **Copy `config.example.yml` → `config.yml`**, set newsletter senders or label, optional upstream sync, and schedule; run the workflow manually once to test.
 
-README note: keep the bot username private. The chat-ID check is the real protection, but there is no reason to advertise the bot.
+README note: keep the bot username private. The chat-ID check is the real protection, but there is no reason to advertise the bot. Also explain that template updates are opt-in sync, not automatic fork sync.
 
 ## Proposed repo layout
 
 ```
 newsletter-digest/
-├── .github/workflows/digest.yml   # daily cron + manual dispatch, concurrency group
+├── .github/workflows/digest.yml   # sync (optional) + digest; cron + dispatch; concurrency
 ├── src/digest/
 │   ├── main.py                    # orchestrates one run
 │   ├── mail.py                    # IMAP fetch, processed-ID tracking
@@ -144,20 +168,22 @@ newsletter-digest/
 │   └── prompts/
 │       ├── digest.md
 │       └── profile_update.md
-├── state/
+├── state/                         # personal; never overwritten by upstream sync
 │   ├── profile.md
 │   ├── changelog.md
 │   └── state.json                 # update_id, processed message IDs
 ├── scripts/setup.py               # token to chat ID discovery and test message
-├── config.example.yml
+├── config.example.yml             # senders/label, lookback, upstream sync
+├── config.yml                     # user copy (gitignored or kept local to their private repo)
 ├── pyproject.toml
 └── README.md
 ```
 
 ## Next steps
 
-1. Resolve the open questions above (read location, default LLM, alert threshold).
-2. Write the core modules: Telegram polling and chat-ID check, IMAP fetch and processed-ID tracking, HTML cleaning.
-3. Write the two prompts: digest (tiers, "why this is here," wildcard) and profile rewrite.
-4. Add the workflow file and the `setup` script.
-5. Write the README with the setup steps above.
+1. Resolve the open questions above (read location, default LLM, alert threshold) and sketch `config.example.yml`.
+2. Next code slice: IMAP header fetch (From / Subject / Date) → Telegram list (still no LLM).
+3. Then: config-driven sender/label filter + `state/state.json` processed-ID tracking + state commit.
+4. Core modules after that: Telegram polling and chat-ID check, HTML cleaning, LLM digest + profile rewrite.
+5. Add optional upstream sync step to the workflow; document manual upgrade path.
+6. Write the README with setup and upgrade notes.
