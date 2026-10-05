@@ -6,6 +6,7 @@ import os
 import sys
 
 from digest.config import find_config_path, load_config
+from digest.llm import smoke_test
 from digest.mail import inbox_message_count
 from digest.telegram import send_message
 
@@ -20,6 +21,7 @@ def _require_env(name: str) -> str:
 def run() -> None:
     gmail_address = _require_env("GMAIL_ADDRESS")
     gmail_app_password = _require_env("GMAIL_APP_PASSWORD")
+    gemini_api_key = _require_env("GEMINI_API_KEY")
     bot_token = _require_env("TELEGRAM_BOT_TOKEN")
     chat_id = _require_env("TELEGRAM_CHAT_ID")
 
@@ -35,8 +37,13 @@ def run() -> None:
         )
 
     count = inbox_message_count(gmail_address, gmail_app_password)
+    gemini_result = smoke_test(
+        gemini_api_key,
+        f"The Gmail inbox currently contains {count} messages.",
+    )
     text = (
         f"Gmail OK — inbox has {count} message{'s' if count != 1 else ''}.\n"
+        f"Gemini smoke test: {gemini_result}\n"
         f"Config: {config_note}"
     )
     send_message(bot_token, chat_id, text)

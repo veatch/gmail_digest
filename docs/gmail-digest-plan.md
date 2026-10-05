@@ -12,7 +12,7 @@ It will be released as a **public project** that other people can clone and run 
 |---|---|
 | Language | **Python** |
 | Hosting / scheduling | **GitHub Actions** daily cron |
-| Distribution | **Public template repository**. Each user clicks "Use this template" to create their **own private copy** (not a fork) |
+| Distribution | **Public template repository**. Each user clicks "Use this template" to create their **own private copy** (using template because a fork of a public repo cannot be private) |
 | Template updates | **Opt-in path-scoped sync** at the start of each Action run (see below). Template copies are not forks, so GitHub will not sync them automatically |
 | State | Committed back to the user's own private copy using the built-in workflow token (no second repo, no personal access token) |
 | Mail selection config | User-edited YAML (`config.yml`, from `config.example.yml`): senders and/or Gmail label, lookback, upstream sync settings. Not rewritten by the bot |

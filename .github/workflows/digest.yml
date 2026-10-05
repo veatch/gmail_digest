@@ -32,10 +32,11 @@ jobs:
       - name: Sync dependencies
         run: uv sync --frozen
 
-      - name: Connect Gmail and ping Telegram
+      - name: Check Gmail, call Gemini, and ping Telegram
         env:
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: uv run python -m digest
