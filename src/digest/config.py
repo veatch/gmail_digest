@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -20,9 +21,16 @@ DEFAULT_UPSTREAM_PATHS = [
 
 
 @dataclass
+class SenderConfig:
+    name: str
+    from_addr: str
+
+
+@dataclass
 class MailConfig:
     label: str = "INBOX"
-    senders: list[str] = field(default_factory=list)
+    processed_label: str = "digest/processed"
+    senders: list[SenderConfig] = field(default_factory=list)
     lookback_days: int = 3
     max_messages: int = 20
 
@@ -107,11 +115,31 @@ def loads_simple_yaml(text: str) -> dict[str, Any]:
             stack.pop()
         parent = stack[-1][1]
 
-        if content.startswith("- "):
+        if content.startswith("- ") or content == "-":
             if not isinstance(parent, list):
                 raise ValueError(f"line {index + 1}: list item under non-list parent")
-            item_raw = content[2:].strip()
-            parent.append(_parse_scalar(item_raw) if item_raw else None)
+            item_raw = content[1:].strip()
+            if not item_raw:
+                kind = _child_kind(lines, index + 1, indent)
+                child: Any = [] if kind == "list" else {}
+                parent.append(child)
+                stack.append((indent, child))
+            elif ":" in item_raw:
+                item: dict[str, Any] = {}
+                parent.append(item)
+                stack.append((indent, item))
+                key, _, rest = item_raw.partition(":")
+                key = key.strip()
+                rest = rest.strip()
+                if rest == "":
+                    kind = _child_kind(lines, index + 1, indent)
+                    nested: Any = [] if kind == "list" else {}
+                    item[key] = nested
+                    stack.append((indent, nested))
+                else:
+                    item[key] = _parse_scalar(rest)
+            else:
+                parent.append(_parse_scalar(item_raw))
             continue
 
         if ":" not in content:
@@ -144,9 +172,28 @@ def config_from_mapping(data: dict[str, Any]) -> Config:
     if not isinstance(mail_raw, dict) or not isinstance(upstream_raw, dict):
         raise ValueError("mail and upstream must be mappings")
 
-    senders = mail_raw.get("senders") or []
-    if not isinstance(senders, list):
+    senders_raw = mail_raw.get("senders") or []
+    if not isinstance(senders_raw, list):
         raise ValueError("mail.senders must be a list")
+    senders: list[SenderConfig] = []
+    names_seen: set[str] = set()
+    for i, entry in enumerate(senders_raw):
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"mail.senders[{i}] must be a mapping with name and from"
+            )
+        name = str(entry.get("name") or "").strip().lower()
+        from_addr = str(entry.get("from") or "").strip()
+        if not name or not from_addr:
+            raise ValueError(f"mail.senders[{i}] needs non-empty name and from")
+        if not re.fullmatch(r"[a-z0-9_-]+", name):
+            raise ValueError(
+                f"mail.senders[{i}].name {name!r} must match [a-z0-9_-]+"
+            )
+        if name in names_seen:
+            raise ValueError(f"mail.senders: duplicate name {name!r}")
+        names_seen.add(name)
+        senders.append(SenderConfig(name=name, from_addr=from_addr))
 
     paths = upstream_raw.get("paths")
     if paths is None:
@@ -157,7 +204,10 @@ def config_from_mapping(data: dict[str, Any]) -> Config:
     return Config(
         mail=MailConfig(
             label=str(mail_raw.get("label") or "INBOX"),
-            senders=[str(s) for s in senders],
+            processed_label=str(
+                mail_raw.get("processed_label") or "digest/processed"
+            ),
+            senders=senders,
             lookback_days=int(mail_raw.get("lookback_days") or 3),
             max_messages=int(mail_raw.get("max_messages") or 20),
         ),

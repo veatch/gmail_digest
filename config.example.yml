@@ -1,22 +1,30 @@
 # Copy to config.yml and edit. Commit config.yml in your private repo
 # (it has no secrets — those stay in GitHub Actions repository secrets).
 
-# Which mail to consider each run (IMAP, read-only).
+# Which mail to consider each run (IMAP). The bot only writes one
+# Gmail label after a successful Telegram send; it does not delete,
+# archive, or change read/unread.
 mail:
-  # IMAP folder / Gmail label. Examples: INBOX, newsletters
+  # IMAP folder / Gmail label to search. Examples: INBOX, newsletters
   label: INBOX
 
-  # Only consider messages From these addresses (case-insensitive
-  # substring match on the From header). Empty list = all senders
-  # in the label (fine for a sandbox inbox; too broad for main Gmail).
-  senders:
-    - newsletter@example.com
-    # - city@localpaper.com
+  # Applied after a sender's digest is sent. Next run skips mail that
+  # already has this label. Create it in Gmail if it is not auto-created.
+  processed_label: digest/processed
 
-  # Ignore mail older than this many days.
+  # Required. Each entry is one LLM call and one Telegram message
+  # when that sender has unlabeled mail. `name` is the state-file slug
+  # and how Telegram replies refer to it ("for axios, ignore national news").
+  senders:
+    - name: axios
+      from: newsletter@example.com
+    # - name: localpaper
+    #   from: city@localpaper.com
+
+  # Safety bound for unlabeled mail, not the uniqueness key.
   lookback_days: 3
 
-  # Hard cap on messages processed per run.
+  # Hard cap on messages processed per run (across a sender).
   max_messages: 20
 
 # Pull app code from the public template at the start of each Action run.

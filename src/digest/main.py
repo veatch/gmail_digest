@@ -33,7 +33,8 @@ def run() -> None:
         sync = "on" if cfg.upstream.auto_sync else "off"
         config_note = (
             f"{config_path.name}: label={cfg.mail.label!r}, "
-            f"{sender_n} sender filter(s), upstream.auto_sync={sync}"
+            f"processed_label={cfg.mail.processed_label!r}, "
+            f"{sender_n} sender(s), upstream.auto_sync={sync}"
         )
 
     count = inbox_message_count(gmail_address, gmail_app_password)
