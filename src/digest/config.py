@@ -11,7 +11,6 @@ DEFAULT_UPSTREAM_PATHS = [
     "src",
     "scripts",
     "docs",
-    ".github/workflows/digest.yml",
     "pyproject.toml",
     "uv.lock",
     "config.example.yml",

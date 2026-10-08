@@ -1,42 +1,25 @@
-name: Digest smoke test
+name: Newsletter digest
 
 on:
   workflow_dispatch:
+  # schedule:
+  #   - cron: "0 8 * * *"
+  #     timezone: America/New_York
 
 concurrency:
-  group: digest
+  group: digest-${{ github.repository }}
   cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
-  smoke:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Sync from upstream template
-        id: upstream_sync
-        run: bash scripts/sync_upstream.sh
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          python-version: "3.12"
-
-      - name: Sync dependencies
-        run: uv sync --frozen
-
-      - name: Check Gmail, call Gemini, and ping Telegram
-        env:
-          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: uv run python -m digest
+  digest:
+    if: github.repository != 'veatch/gmail_digest'
+    uses: veatch/gmail_digest/.github/workflows/run.yml@main
+    secrets:
+      GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+      GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}

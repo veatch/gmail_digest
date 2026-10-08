@@ -29,12 +29,13 @@ upstream:
   # Prefer a release tag once they exist; main is fine while iterating.
   ref: main
 
-  # Paths replaced from upstream. state/ and config.yml are never listed.
+  # Application paths replaced from upstream. Workflow files stay in the
+  # instance repo; digest.yml calls the reusable workflow in the template.
+  # state/ and config.yml are never listed.
   paths:
     - src
     - scripts
     - docs
-    - .github/workflows/digest.yml
     - pyproject.toml
     - uv.lock
     - config.example.yml

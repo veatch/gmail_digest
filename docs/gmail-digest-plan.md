@@ -13,7 +13,7 @@ It will be released as a **public project** that other people can clone and run 
 | Language | **Python** |
 | Hosting / scheduling | **GitHub Actions** daily cron |
 | Distribution | **Public template repository**. Each user clicks "Use this template" to create their **own private copy** (using template because a fork of a public repo cannot be private) |
-| Template updates | **Opt-in path-scoped sync** at the start of each Action run (see below). Template copies are not forks, so GitHub will not sync them automatically |
+| Template updates | The instance keeps a thin caller workflow and calls a reusable workflow in the public template repo. Application code can still use **opt-in path-scoped sync**; workflow files are not synced |
 | State | Committed back to the user's own private copy using the built-in workflow token (no second repo, no personal access token) |
 | Mail selection config | User-edited YAML (`config.yml`, from `config.example.yml`): senders and/or Gmail label, lookback, upstream sync settings. Not rewritten by the bot |
 | Runtime state | Git-committed under `state/`: preference profile, changelog, Telegram `update_id`, processed Message-IDs. Mailbox is never modified |
@@ -39,7 +39,11 @@ It will be released as a **public project** that other people can clone and run 
 
 "Use this template" creates an independent repo with **no upstream link**. Updates are a deliberate sync, not something GitHub wires up.
 
-**Chosen approach:** optional auto-sync at the **start** of the digest workflow.
+**Chosen approach:** keep workflow orchestration in a reusable workflow in the public template repo, called by the instance's small `.github/workflows/digest.yml`. The caller owns its schedule and forwards only the secrets the reusable workflow needs. Use `@main` while developing; switch to a release ref such as `@v1` once published.
+
+The reusable workflow checks out the caller's private repository, so the app code, `config.yml`, and `state/` remain in that repository. Updating the reusable workflow does not require pushing a modified workflow file to the private repo. For user-owned repos, map required secrets by name rather than using `secrets: inherit`.
+
+Application code can optionally auto-sync at the **start** of the reusable workflow:
 
 - Config (`config.yml`):
   ```yaml
@@ -48,8 +52,9 @@ It will be released as a **public project** that other people can clone and run 
     url: https://github.com/<org>/newsletter-digest.git
     ref: v0.3.0   # prefer release tags once stable; main is fine early on
   ```
-- Sync is **path-scoped**, not a full merge. Checkout only allowlisted paths from upstream (e.g. `src/`, `.github/workflows/digest.yml`, `pyproject.toml`, `uv.lock`, shared prompts). **Never** overwrite `state/`, the user's `config.yml`, or secrets.
-- Workflow needs `contents: write`. Fetching a public template needs no token; pushing back uses `GITHUB_TOKEN`.
+- Sync is **path-scoped**, not a full merge. Checkout only app paths from upstream (e.g. `src/`, `scripts/`, `pyproject.toml`, `uv.lock`, shared prompts). Do not sync `.github/workflows/`; the caller workflow stays in the private repo and the reusable workflow is referenced directly from the template. **Never** overwrite `state/`, the user's `config.yml`, or secrets.
+- The caller grants `contents: write` so the reusable workflow can push app and state commits with `GITHUB_TOKEN`. It does not need workflow-file write permission.
+- Pin the reusable workflow to a release tag or SHA for stable behavior. Updating a floating major tag such as `v1` is a maintainer action; a caller pinned to an exact version tag must bump its `uses:` ref to upgrade.
 - On sync failure or conflict: skip the upgrade, Telegram a short notice, and continue the digest on the current tree so a bad upstream cannot brick daily runs.
 - Keep the workflow `concurrency` group so sync + state commits cannot race.
 
@@ -157,7 +162,8 @@ README note: keep the bot username private. The chat-ID check is the real protec
 
 ```
 newsletter-digest/
-├── .github/workflows/digest.yml   # sync (optional) + digest; cron + dispatch; concurrency
+├── .github/workflows/digest.yml   # caller: schedule, concurrency, permissions, secret mapping
+├── .github/workflows/run.yml      # reusable implementation: checkout, sync, install, run
 ├── src/digest/
 │   ├── main.py                    # orchestrates one run
 │   ├── mail.py                    # IMAP fetch, processed-ID tracking
