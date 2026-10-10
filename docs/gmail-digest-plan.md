@@ -16,7 +16,7 @@ It will be released as a **public project** that other people can clone and run 
 | Template updates | The instance keeps a thin caller workflow and calls a reusable workflow in the public template repo. Application code can still use **opt-in path-scoped sync**; workflow files are not synced |
 | State | Preference files committed back to the user's private copy with `GITHUB_TOKEN`. **Processed mail is not tracked in git** |
 | Mail selection config | User-edited YAML (`config.yml`, from `config.example.yml`): named senders, inbox/label, lookback, **processed Gmail label**, upstream sync. Not rewritten by the bot |
-| Senders | Each `mail.senders` entry has a **name** (e.g. `axios`) and a **from** address. Name is the slug for that sender's state file and how Telegram replies refer to it (`for axios, ignore national news`) |
+| Senders | Each `mail.senders` entry has a human-facing **name** and a **from** address. A safe slug derived from the name identifies its state file; replies use the human-facing name. |
 | Per-run LLM / Telegram | **One LLM call and one Telegram message per sender** that has new unlabeled mail. **No message when nothing is new** for that sender |
 | Runtime state | Git-committed under `state/`: global `profile.md`, one file per sender, changelog, Telegram `update_id`. No processed-ID / subject / date ledger |
 | Processed-mail tracking | Bot **adds a Gmail label** after a sender's new mail is successfully digested and sent. Next run searches for that sender **without** the label. Does not key off subject or send time |
@@ -75,13 +75,13 @@ mail:
   lookback_days: 3                    # safety bound, not the uniqueness key
   max_messages: 20
   senders:
-    - name: axios
+    - name: Axios
       from: newsletter@axios.com
-    - name: localpaper
+    - name: Local Paper
       from: city@localpaper.com
 ```
 
-- **`name`:** unique, case-insensitive slug (`[a-z0-9_-]+`). Used as `state/senders/<name>.md` and in replies (`for axios, …`).
+- **`name`:** unique, case-insensitive human-facing label. Shown in digest headings and used in replies (`for Local Paper, …`). A lowercase underscore slug is derived from it for `state/senders/<slug>.md` (for example, `Local Paper` becomes `local_paper`). Derived slugs must be unique.
 - **`from`:** case-insensitive substring match on the From header.
 
 ## Processed-mail tracking (Gmail label)
@@ -101,7 +101,7 @@ Each scheduled run:
 1. **Optional upstream sync** (if `upstream.auto_sync`): fetch the configured ref, update allowlisted paths, commit and push if anything changed.
 2. **Poll Telegram** for messages since the last processed `update_id`. Accept only the configured chat ID.
 3. **Apply replies:**
-   - If the text names a configured sender (`for axios, …`, `axios: …`, or similar), LLM-rewrite **that sender’s** state file.
+   - If the text names a configured sender (`for Local Paper, …`, `Local Paper: …`, or similar), LLM-rewrite **that sender’s** state file.
    - Otherwise LLM-rewrite the **global** `profile.md`.
    - Previous version of the rewritten file goes to the changelog.
 4. **For each sender in `config.yml` order**, independently:
@@ -110,7 +110,7 @@ Each scheduled run:
    3. Fetch and **clean** bodies (HTML, footers, tracking links).
    4. **Build the prompt** from `prompts/digest.md` + **global profile** + **this sender’s state file** + the cleaned editions. Other senders’ mail and state are not included.
    5. **Call the configured LLM** once.
-   6. **Send one Telegram message** for this sender (HTML parse mode; split if over 4096 characters). Include the configured **name** in the heading so replies can say `for axios, …`.
+   6. **Send one Telegram message** for this sender (HTML parse mode; split if over 4096 characters). Include the configured **name** in the heading so replies can refer to that sender by name.
    7. **Apply `processed_label`** to the messages just handled.
 5. **Commit state** (global profile, any changed sender files, changelog, `update_id`). Still no processed-mail list in git.
 
@@ -129,14 +129,14 @@ One sender’s LLM/Telegram/label failure must not drop the others. Commit whate
 ## Preference profile (global + per sender)
 
 - **`state/profile.md` (global):** tastes that apply across newsletters (“I don’t care about sports”). Injected into **every** sender prompt.
-- **`state/senders/<name>.md`:** memory for that newsletter only (“Axios: skip national politics; keep local housing”). Created empty/skeleton on first run if missing.
+- **`state/senders/<slug>.md`:** memory for that newsletter only (“Axios: skip national politics; keep local housing”). The slug is derived from the configured sender name. Created empty/skeleton on first run if missing.
 - Keep each file to a few hundred words. Sections: durable interests, durable dislikes, "currently following" (temporary topics that get pruned).
 - On each update, the LLM gets the current file plus the new feedback and returns a consolidated version of **that file only**.
 - Changelog: one dated entry per revision (`changelog/<date>-profile.md` or `changelog/<date>-<name>.md`) so a bad rewrite can be reverted. Git history is a second backup.
 
 Telegram replies:
 
-- `for axios, ignore national news` → rewrite `state/senders/axios.md`.
+- `for Local Paper, ignore national news` → rewrite `state/senders/local_paper.md`.
 - `I never want sports` (no sender name) → rewrite `state/profile.md`.
 - Ignore unknown names; optionally the next digest can say the name wasn’t recognized (keep this quiet at first).
 

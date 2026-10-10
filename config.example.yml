@@ -13,8 +13,8 @@ mail:
   processed_label: digest/processed
 
   # Required. Each entry is one LLM call and one Telegram message
-  # when that sender has unlabeled mail. `name` is the state-file slug
-  # and how Telegram replies refer to it ("for axios, ignore national news").
+  # when that sender has unlabeled mail. `name` is the human-facing label;
+  # a safe state-file slug is derived from it and replies use the label.
   senders:
     - name: axios
       from: newsletter@example.com

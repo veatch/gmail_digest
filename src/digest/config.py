@@ -25,6 +25,11 @@ class SenderConfig:
     name: str
     from_addr: str
 
+    @property
+    def slug(self) -> str:
+        """Stable filesystem-safe key derived from the human-facing name."""
+        return re.sub(r"[^a-z0-9]+", "_", self.name.casefold()).strip("_")
+
 
 @dataclass
 class MailConfig:
@@ -177,23 +182,33 @@ def config_from_mapping(data: dict[str, Any]) -> Config:
         raise ValueError("mail.senders must be a list")
     senders: list[SenderConfig] = []
     names_seen: set[str] = set()
+    slugs_seen: set[str] = set()
     for i, entry in enumerate(senders_raw):
         if not isinstance(entry, dict):
             raise ValueError(
                 f"mail.senders[{i}] must be a mapping with name and from"
             )
-        name = str(entry.get("name") or "").strip().lower()
+        name = str(entry.get("name") or "").strip()
         from_addr = str(entry.get("from") or "").strip()
         if not name or not from_addr:
             raise ValueError(f"mail.senders[{i}] needs non-empty name and from")
-        if not re.fullmatch(r"[a-z0-9_-]+", name):
-            raise ValueError(
-                f"mail.senders[{i}].name {name!r} must match [a-z0-9_-]+"
-            )
-        if name in names_seen:
+        name_key = name.casefold()
+        if name_key in names_seen:
             raise ValueError(f"mail.senders: duplicate name {name!r}")
-        names_seen.add(name)
-        senders.append(SenderConfig(name=name, from_addr=from_addr))
+        sender = SenderConfig(name=name, from_addr=from_addr)
+        if not sender.slug:
+            raise ValueError(
+                f"mail.senders[{i}].name {name!r} must contain at least one "
+                "English letter or digit so a state-file key can be derived"
+            )
+        if sender.slug in slugs_seen:
+            raise ValueError(
+                f"mail.senders: names must produce unique state-file keys; "
+                f"{name!r} also produces {sender.slug!r}"
+            )
+        names_seen.add(name_key)
+        slugs_seen.add(sender.slug)
+        senders.append(sender)
 
     paths = upstream_raw.get("paths")
     if paths is None:
