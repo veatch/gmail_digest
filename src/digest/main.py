@@ -1,4 +1,4 @@
-"""One digest run: connect to Gmail, report inbox count on Telegram."""
+"""Send one Telegram header list for each sender with new newsletter mail."""
 
 from __future__ import annotations
 
@@ -6,9 +6,11 @@ import os
 import sys
 
 from digest.config import find_config_path, load_config
-from digest.llm import smoke_test
-from digest.mail import inbox_message_count
+from digest.mail import apply_processed_label, fetch_unprocessed_headers
 from digest.telegram import send_message
+
+
+TELEGRAM_SAFE_LIMIT = 3900
 
 
 def _require_env(name: str) -> str:
@@ -18,37 +20,70 @@ def _require_env(name: str) -> str:
     return value
 
 
+def _chunks(title: str, lines: list[str]) -> list[str]:
+    chunks: list[str] = []
+    current = title
+    for line in lines:
+        addition = f"\n{line}"
+        if len(current) + len(addition) > TELEGRAM_SAFE_LIMIT and current != title:
+            chunks.append(current)
+            current = title + addition
+        else:
+            current += addition
+    if current:
+        chunks.append(current)
+    return chunks
+
+
 def run() -> None:
     gmail_address = _require_env("GMAIL_ADDRESS")
     gmail_app_password = _require_env("GMAIL_APP_PASSWORD")
-    gemini_api_key = _require_env("GEMINI_API_KEY")
     bot_token = _require_env("TELEGRAM_BOT_TOKEN")
     chat_id = _require_env("TELEGRAM_CHAT_ID")
 
     config_path = find_config_path()
-    config_note = "no config.yml"
-    if config_path is not None:
-        cfg = load_config(config_path)
-        sender_n = len(cfg.mail.senders)
-        sync = "on" if cfg.upstream.auto_sync else "off"
-        config_note = (
-            f"{config_path.name}: label={cfg.mail.label!r}, "
-            f"processed_label={cfg.mail.processed_label!r}, "
-            f"{sender_n} sender(s), upstream.auto_sync={sync}"
-        )
+    if config_path is None:
+        raise SystemExit("Missing config.yml (or config.example.yml)")
+    cfg = load_config(config_path)
+    errors: list[str] = []
 
-    count = inbox_message_count(gmail_address, gmail_app_password)
-    gemini_result = smoke_test(
-        gemini_api_key,
-        f"The Gmail inbox currently contains {count} messages.",
-    )
-    text = (
-        f"Gmail OK — inbox has {count} message{'s' if count != 1 else ''}.\n"
-        f"Gemini smoke test: {gemini_result}\n"
-        f"Config: {config_note}"
-    )
-    send_message(bot_token, chat_id, text)
-    print(text, flush=True)
+    for sender in cfg.mail.senders:
+        try:
+            messages = fetch_unprocessed_headers(
+                gmail_address,
+                gmail_app_password,
+                cfg.mail.label,
+                sender.from_addr,
+                cfg.mail.processed_label,
+                cfg.mail.lookback_days,
+                cfg.mail.max_messages,
+            )
+            if not messages:
+                print(f"{sender.name}: no new mail", flush=True)
+                continue
+
+            title = f"{sender.name} — new newsletter mail"
+            lines = [
+                f"• {message.subject}\n  {message.date}".rstrip()
+                for message in messages
+            ]
+            for part in _chunks(title, lines):
+                send_message(bot_token, chat_id, part)
+
+            apply_processed_label(
+                gmail_address,
+                gmail_app_password,
+                cfg.mail.label,
+                cfg.mail.processed_label,
+                [message.uid for message in messages],
+            )
+            print(f"{sender.name}: sent {len(messages)} message header(s)", flush=True)
+        except Exception as exc:
+            errors.append(f"{sender.name}: {exc}")
+            print(f"error: {sender.name}: {exc}", file=sys.stderr, flush=True)
+
+    if errors:
+        raise RuntimeError("One or more senders failed: " + "; ".join(errors))
 
 
 def main() -> None:
