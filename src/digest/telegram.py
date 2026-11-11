@@ -8,15 +8,15 @@ import urllib.parse
 import urllib.request
 
 
-def send_message(bot_token: str, chat_id: str, text: str) -> None:
-    """Send a plain-text message to a Telegram chat."""
+def send_message(
+    bot_token: str, chat_id: str, text: str, parse_mode: str | None = None
+) -> None:
+    """Send a message to a Telegram chat, optionally using its HTML parser."""
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = urllib.parse.urlencode(
-        {
-            "chat_id": chat_id,
-            "text": text,
-        }
-    ).encode()
+    fields = {"chat_id": chat_id, "text": text}
+    if parse_mode:
+        fields["parse_mode"] = parse_mode
+    payload = urllib.parse.urlencode(fields).encode()
     request = urllib.request.Request(
         url,
         data=payload,

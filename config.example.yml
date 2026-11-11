@@ -12,8 +12,8 @@ mail:
   # already has this label. Create it in Gmail if it is not auto-created.
   processed_label: digest/processed
 
-  # Required. The current first slice sends one Telegram header list per
-  # sender with unlabeled mail; later, each entry will drive one LLM digest.
+  # Required. Each sender with unlabeled mail gets one LLM digest and one
+  # Telegram message.
   # `name` is the human-facing label and reply name.
   senders:
     - name: axios

@@ -108,7 +108,7 @@ Each scheduled run:
    1. IMAP search: folder + From match + **not** `processed_label` + lookback + `max_messages`.
    2. If **no new messages: skip** LLM and Telegram for this sender (no “nothing new” ping).
    3. Fetch and **clean** bodies (HTML, footers, tracking links).
-   4. **Build the prompt** from `prompts/digest.md` + **global profile** + **this sender’s state file** + the cleaned editions. Other senders’ mail and state are not included.
+   4. **Build the prompt** from `src/digest/prompts/digest.md` + **global profile** + **this sender’s state file** + the extracted editions. Other senders’ mail and state are not included.
    5. **Call the configured LLM** once.
    6. **Send one Telegram message** for this sender (HTML parse mode; split if over 4096 characters). Include the configured **name** in the heading so replies can refer to that sender by name.
    7. **Apply `processed_label`** to the messages just handled.
@@ -244,7 +244,7 @@ newsletter-digest/
 
 1. Resolve the open questions above (read location, default LLM, alert threshold).
 2. ~~Sketch `config.example.yml` + opt-in path-scoped upstream sync in the workflow.~~
-3. Next code slice: named senders in config + IMAP header fetch of **unlabeled** mail per sender → one Telegram list per sender that has mail (still no LLM); skip senders with nothing new; apply `processed_label` after send.
-4. Then: commit `state/telegram.json` + skeleton per-sender files; no processed-ID ledger.
-5. Core modules after that: Telegram polling and chat-ID check, HTML cleaning, per-sender LLM digest (global profile + sender state), reply routing by sender **name**.
+3. ~~Named senders in config + IMAP fetch of unlabeled mail per sender; skip empty senders and label only after successful Telegram delivery.~~
+4. ~~Per-sender Gemini digest using extracted mail bodies, global profile and sender guidance; one Telegram message per sender; commit preference state.~~
+5. Next: Telegram polling with chat-ID validation, then reply routing that updates global or named sender guidance and records revisions in the changelog.
 6. Write the README with setup (including the processed Gmail label) and upgrade notes.

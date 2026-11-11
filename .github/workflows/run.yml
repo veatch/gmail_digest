@@ -18,6 +18,8 @@ jobs:
   digest:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
       - name: Checkout caller repository
         uses: actions/checkout@v4
@@ -35,7 +37,7 @@ jobs:
       - name: Sync dependencies
         run: uv sync --frozen
 
-      - name: Check Gmail, call Gemini, and ping Telegram
+      - name: Build and send per-sender digests
         env:
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
@@ -43,3 +45,15 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: uv run python -m digest
+
+      - name: Commit updated preference state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state
+          if git diff --cached --quiet; then
+            echo "No state changes to commit"
+          else
+            git commit -m "Update newsletter preference state"
+            git push
+          fi

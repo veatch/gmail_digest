@@ -1,16 +1,21 @@
-"""Send one Telegram header list for each sender with new newsletter mail."""
+"""Send one Gemini digest per configured sender with new newsletter mail."""
 
 from __future__ import annotations
 
+import html
 import os
+from pathlib import Path
 import sys
 
 from digest.config import find_config_path, load_config
-from digest.mail import apply_processed_label, fetch_unprocessed_headers
+from digest.llm import summarize_sender
+from digest.mail import apply_processed_label, fetch_unprocessed_messages
 from digest.telegram import send_message
 
 
 TELEGRAM_SAFE_LIMIT = 3900
+BODY_CHAR_LIMIT = 8000
+STATE_ROOT = Path("state")
 
 
 def _require_env(name: str) -> str:
@@ -20,24 +25,24 @@ def _require_env(name: str) -> str:
     return value
 
 
-def _chunks(title: str, lines: list[str]) -> list[str]:
-    chunks: list[str] = []
-    current = title
-    for line in lines:
-        addition = f"\n{line}"
-        if len(current) + len(addition) > TELEGRAM_SAFE_LIMIT and current != title:
-            chunks.append(current)
-            current = title + addition
-        else:
-            current += addition
-    if current:
-        chunks.append(current)
-    return chunks
+def _read_guidance(path: Path, starter: str) -> str:
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(starter, encoding="utf-8")
+    return path.read_text(encoding="utf-8").strip()
+
+
+def _load_prompt() -> str:
+    path = Path(__file__).parent / "prompts" / "digest.md"
+    if not path.is_file():
+        raise FileNotFoundError(f"Missing shared digest prompt: {path}")
+    return path.read_text(encoding="utf-8").strip()
 
 
 def run() -> None:
     gmail_address = _require_env("GMAIL_ADDRESS")
     gmail_app_password = _require_env("GMAIL_APP_PASSWORD")
+    gemini_api_key = _require_env("GEMINI_API_KEY")
     bot_token = _require_env("TELEGRAM_BOT_TOKEN")
     chat_id = _require_env("TELEGRAM_CHAT_ID")
 
@@ -45,11 +50,18 @@ def run() -> None:
     if config_path is None:
         raise SystemExit("Missing config.yml (or config.example.yml)")
     cfg = load_config(config_path)
+    prompt_template = _load_prompt()
+    global_guidance = _read_guidance(
+        STATE_ROOT / "profile.md",
+        "# Global newsletter preferences\n\n"
+        "No preferences recorded yet. Keep the digest broadly useful and "
+        "include an occasional worthwhile story outside narrow preferences.\n",
+    )
     errors: list[str] = []
 
     for sender in cfg.mail.senders:
         try:
-            messages = fetch_unprocessed_headers(
+            messages = fetch_unprocessed_messages(
                 gmail_address,
                 gmail_app_password,
                 cfg.mail.label,
@@ -62,14 +74,37 @@ def run() -> None:
                 print(f"{sender.name}: no new mail", flush=True)
                 continue
 
-            title = f"{sender.name} — new newsletter mail"
-            lines = [
-                f"• {message.subject}\n  {message.date}".rstrip()
+            sender_guidance = _read_guidance(
+                STATE_ROOT / "senders" / f"{sender.slug}.md",
+                f"# {sender.name} preferences\n\n"
+                "No sender-specific preferences recorded yet.\n",
+            )
+            editions = [
+                {
+                    "subject": message.subject,
+                    "date": message.date,
+                    "body": message.body[:BODY_CHAR_LIMIT],
+                }
                 for message in messages
             ]
-            for part in _chunks(title, lines):
-                send_message(bot_token, chat_id, part)
+            summary = summarize_sender(
+                gemini_api_key,
+                sender.name,
+                prompt_template,
+                global_guidance,
+                sender_guidance,
+                editions,
+            )
+            telegram_text = (
+                f"<b>{html.escape(sender.name)}</b>\n\n{html.escape(summary)}"
+            )
+            if len(telegram_text) > TELEGRAM_SAFE_LIMIT:
+                raise RuntimeError(
+                    f"Gemini response is too long for one Telegram message "
+                    f"({len(telegram_text)} characters)"
+                )
 
+            send_message(bot_token, chat_id, telegram_text, parse_mode="HTML")
             apply_processed_label(
                 gmail_address,
                 gmail_app_password,
@@ -77,7 +112,7 @@ def run() -> None:
                 cfg.mail.processed_label,
                 [message.uid for message in messages],
             )
-            print(f"{sender.name}: sent {len(messages)} message header(s)", flush=True)
+            print(f"{sender.name}: sent digest for {len(messages)} edition(s)", flush=True)
         except Exception as exc:
             errors.append(f"{sender.name}: {exc}")
             print(f"error: {sender.name}: {exc}", file=sys.stderr, flush=True)
