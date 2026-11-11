@@ -15,19 +15,39 @@ if [[ ! -f config.yml ]]; then
 fi
 
 # Read upstream settings without project deps (works before uv sync).
-eval "$(
+# Parse the YAML mapping directly instead of calling load_config(): the
+# instance may be running an older validator that rejects newer config fields
+# before it has a chance to sync the updated application code.
+AUTO_SYNC=0
+UPSTREAM_URL=""
+UPSTREAM_REF="main"
+UPSTREAM_PATHS=""
+if ! SETTINGS="$(
   PYTHONPATH=src python3 - <<'PY'
-from digest.config import load_config
+from pathlib import Path
+from digest.config import DEFAULT_UPSTREAM_PATHS, loads_simple_yaml
 import shlex
 
-cfg = load_config("config.yml")
-u = cfg.upstream
-print(f"AUTO_SYNC={int(bool(u.auto_sync))}")
-print(f"UPSTREAM_URL={shlex.quote(u.url)}")
-print(f"UPSTREAM_REF={shlex.quote(u.ref)}")
-print(f"UPSTREAM_PATHS={shlex.quote(chr(10).join(u.paths))}")
+data = loads_simple_yaml(Path("config.yml").read_text(encoding="utf-8"))
+u = data.get("upstream") or {}
+if not isinstance(u, dict):
+    raise SystemExit("config.yml: upstream must be a mapping")
+paths = u.get("paths")
+if paths is None:
+    paths = DEFAULT_UPSTREAM_PATHS
+if not isinstance(paths, list):
+    raise SystemExit("config.yml: upstream.paths must be a list")
+auto_sync = u.get("auto_sync", False)
+print(f"AUTO_SYNC={int(auto_sync is True or str(auto_sync).lower() in {'true', 'yes', 'on', '1'})}")
+print(f"UPSTREAM_URL={shlex.quote(str(u.get('url') or '').strip())}")
+print(f"UPSTREAM_REF={shlex.quote(str(u.get('ref') or 'main').strip())}")
+print(f"UPSTREAM_PATHS={shlex.quote(chr(10).join(str(p) for p in paths))}")
 PY
-)"
+)"; then
+  warn "could not read upstream settings from config.yml — continuing without sync"
+  exit 0
+fi
+eval "$SETTINGS"
 
 if [[ "${AUTO_SYNC}" != "1" ]]; then
   log "upstream.auto_sync is false — skip"
