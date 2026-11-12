@@ -32,3 +32,30 @@ def send_message(
 
     if not body.get("ok"):
         raise RuntimeError(f"Telegram sendMessage rejected: {body!r}")
+
+
+def get_updates(bot_token: str, offset: int) -> list[dict[str, object]]:
+    """Fetch pending text-message updates starting at the persisted offset."""
+    url = f"https://api.telegram.org/bot{bot_token}/getUpdates?"
+    query = urllib.parse.urlencode(
+        {
+            "offset": offset,
+            "limit": 10,
+            "timeout": 0,
+            "allowed_updates": json.dumps(["message"]),
+        }
+    )
+    request = urllib.request.Request(url + query, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            body = json.loads(response.read().decode())
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")
+        raise RuntimeError(f"Telegram getUpdates failed ({exc.code}): {detail}") from exc
+
+    if not body.get("ok"):
+        raise RuntimeError(f"Telegram getUpdates rejected: {body!r}")
+    result = body.get("result")
+    if not isinstance(result, list):
+        raise RuntimeError(f"Telegram getUpdates returned invalid result: {body!r}")
+    return [update for update in result if isinstance(update, dict)]

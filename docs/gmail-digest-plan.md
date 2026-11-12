@@ -137,8 +137,9 @@ One sender’s LLM/Telegram/label failure must not drop the others. Commit whate
 Telegram replies:
 
 - `for Local Paper, ignore national news` → rewrite `state/senders/local_paper.md`.
+- For a configured name such as `Money Stuff by Matt Levine`, either side of `by` (`Money Stuff` or `Matt Levine`) also routes to that sender.
 - `I never want sports` (no sender name) → rewrite `state/profile.md`.
-- Ignore unknown names; optionally the next digest can say the name wasn’t recognized (keep this quiet at first).
+- Unknown names receive a brief Telegram clarification and never update the global profile by accident.
 
 ## Security notes
 
@@ -246,5 +247,5 @@ newsletter-digest/
 2. ~~Sketch `config.example.yml` + opt-in path-scoped upstream sync in the workflow.~~
 3. ~~Named senders in config + IMAP fetch of unlabeled mail per sender; skip empty senders and label only after successful Telegram delivery.~~
 4. ~~Per-sender Gemini digest using extracted mail bodies, global profile and sender guidance; one Telegram message per sender; commit preference state.~~
-5. Next: Telegram polling with chat-ID validation, then reply routing that updates global or named sender guidance and records revisions in the changelog.
+5. ~~Telegram polling with configured chat-ID validation, global or named-sender guidance updates, and prior-version changelog entries.~~
 6. Write the README with setup (including the processed Gmail label) and upgrade notes.

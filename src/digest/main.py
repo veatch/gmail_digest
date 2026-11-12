@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 
 from digest.config import find_config_path, load_config
+from digest.feedback import process_telegram_feedback
 from digest.llm import summarize_sender
 from digest.mail import apply_processed_label, fetch_unprocessed_messages
 from digest.telegram import send_message
@@ -51,14 +52,19 @@ def run() -> None:
         raise SystemExit("Missing config.yml (or config.example.yml)")
     cfg = load_config(config_path)
     prompt_template = _load_prompt()
+    errors = process_telegram_feedback(
+        bot_token,
+        chat_id,
+        gemini_api_key,
+        cfg.mail.senders,
+        STATE_ROOT,
+    )
     global_guidance = _read_guidance(
         STATE_ROOT / "profile.md",
         "# Global newsletter preferences\n\n"
         "No preferences recorded yet. Keep the digest broadly useful and "
         "include an occasional worthwhile story outside narrow preferences.\n",
     )
-    errors: list[str] = []
-
     for sender in cfg.mail.senders:
         try:
             messages = fetch_unprocessed_messages(
