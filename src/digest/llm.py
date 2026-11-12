@@ -6,6 +6,7 @@ from google import genai
 
 
 MODEL = "gemini-3.5-flash-lite"
+RETRY_ATTEMPTS = 6  # Includes the initial request: one retry beyond the SDK default.
 
 
 def summarize_sender(
@@ -32,8 +33,21 @@ def summarize_sender(
         f"{prompt_template}\n\n"
         f"Newsletter editions:\n{edition_text}"
     )
-    client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(model=MODEL, contents=contents)
+    client = genai.Client(
+        api_key=api_key,
+        http_options=genai.types.HttpOptions(
+            retry_options=genai.types.HttpRetryOptions(attempts=RETRY_ATTEMPTS)
+        ),
+    )
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=contents,
+        config=genai.types.GenerateContentConfig(
+            automatic_function_calling=genai.types.AutomaticFunctionCallingConfig(
+                disable=True
+            )
+        ),
+    )
     result = (response.text or "").strip()
     if not result:
         raise RuntimeError("Gemini returned an empty digest")
