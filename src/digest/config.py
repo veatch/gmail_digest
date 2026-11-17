@@ -24,6 +24,7 @@ DEFAULT_UPSTREAM_PATHS = [
 class SenderConfig:
     name: str
     from_addr: str
+    long_content_handling: bool = False
 
     @property
     def slug(self) -> str:
@@ -195,7 +196,16 @@ def config_from_mapping(data: dict[str, Any]) -> Config:
         name_key = name.casefold()
         if name_key in names_seen:
             raise ValueError(f"mail.senders: duplicate name {name!r}")
-        sender = SenderConfig(name=name, from_addr=from_addr)
+        long_content_handling = entry.get("long_content_handling", False)
+        if not isinstance(long_content_handling, bool):
+            raise ValueError(
+                f"mail.senders[{i}].long_content_handling must be true or false"
+            )
+        sender = SenderConfig(
+            name=name,
+            from_addr=from_addr,
+            long_content_handling=long_content_handling,
+        )
         if not sender.slug:
             raise ValueError(
                 f"mail.senders[{i}].name {name!r} must contain at least one "

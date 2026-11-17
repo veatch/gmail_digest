@@ -75,6 +75,7 @@ def run() -> None:
                 cfg.mail.processed_label,
                 cfg.mail.lookback_days,
                 cfg.mail.max_messages,
+                sender.long_content_handling,
             )
             if not messages:
                 print(f"{sender.name}: no new mail", flush=True)
@@ -89,7 +90,11 @@ def run() -> None:
                 {
                     "subject": message.subject,
                     "date": message.date,
-                    "body": message.body[:BODY_CHAR_LIMIT],
+                    "body": (
+                        message.body
+                        if sender.long_content_handling
+                        else message.body[:BODY_CHAR_LIMIT]
+                    ),
                 }
                 for message in messages
             ]

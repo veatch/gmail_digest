@@ -47,6 +47,38 @@ class _HTMLText(HTMLParser):
             self.parts.append(data)
 
 
+class _HTMLStories(HTMLParser):
+    """Collect H3 headings with the first paragraph that follows each one."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.blocks: list[tuple[str, str]] = []
+        self.active_tag: str | None = None
+        self.active_parts: list[str] = []
+        self.hidden_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style", "head", "noscript"}:
+            self.hidden_depth += 1
+        elif not self.hidden_depth and tag in {"h3", "p"}:
+            self.active_tag = tag
+            self.active_parts = []
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style", "head", "noscript"} and self.hidden_depth:
+            self.hidden_depth -= 1
+        elif tag == self.active_tag:
+            text = " ".join(" ".join(self.active_parts).split())
+            if text:
+                self.blocks.append((tag, text))
+            self.active_tag = None
+            self.active_parts = []
+
+    def handle_data(self, data: str) -> None:
+        if not self.hidden_depth and self.active_tag:
+            self.active_parts.append(data)
+
+
 def _decode_part(part: Message) -> str:
     payload = part.get_payload(decode=True)
     if payload is None:
@@ -59,7 +91,7 @@ def _decode_part(part: Message) -> str:
         return payload.decode("utf-8", errors="replace")
 
 
-def _message_body(message: Message) -> str:
+def _message_body(message: Message, long_content_handling: bool = False) -> str:
     plain: list[str] = []
     html: list[str] = []
     parts = message.walk() if message.is_multipart() else [message]
@@ -71,6 +103,24 @@ def _message_body(message: Message) -> str:
             plain.append(_decode_part(part))
         elif content_type == "text/html":
             html.append(_decode_part(part))
+    if long_content_handling and html:
+        parser = _HTMLStories()
+        parser.feed("\n".join(html))
+        stories: list[str] = []
+        for index, (tag, heading) in enumerate(parser.blocks):
+            if tag != "h3":
+                continue
+            paragraph = ""
+            for next_tag, text in parser.blocks[index + 1 :]:
+                if next_tag == "h3":
+                    break
+                if next_tag == "p":
+                    paragraph = text
+                    break
+            stories.append(f"{heading}\n{paragraph}".strip())
+        if stories:
+            return "\n\n".join(stories)
+
     raw = "\n".join(plain) if plain else "\n".join(html)
     if not plain and html:
         parser = _HTMLText()
@@ -92,6 +142,7 @@ def fetch_unprocessed_messages(
     processed_label: str,
     lookback_days: int,
     max_messages: int,
+    long_content_handling: bool = False,
 ) -> list[NewsletterMessage]:
     """Fetch recent message bodies for one sender's mail not yet labeled."""
     client = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
@@ -125,7 +176,7 @@ def fetch_unprocessed_messages(
                     uid=uid,
                     subject=subject or "(no subject)",
                     date=parsed.get("Date", ""),
-                    body=_message_body(parsed),
+                    body=_message_body(parsed, long_content_handling),
                 )
             )
         return messages

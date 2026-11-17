@@ -18,8 +18,12 @@ mail:
   senders:
     - name: axios
       from: newsletter@example.com
+      # For long HTML newsletters, send each H3 heading and its first paragraph.
+      # Omit or set false to keep the standard 8,000-character body limit.
+      long_content_handling: false
     # - name: localpaper
     #   from: city@localpaper.com
+    #   long_content_handling: false
 
   # Safety bound for unlabeled mail, not the uniqueness key.
   lookback_days: 3
