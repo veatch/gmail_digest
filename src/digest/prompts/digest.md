@@ -1,7 +1,7 @@
 For this sender, help the reader decide which stories are worth opening.
 
 Write a concise digest with these sections:
-- Must read: the few strongest stories, with a clear reason each matters.
+- Must read: the few strongest stories.
 - Probably interesting: other stories that match the reader's stated interests.
 - Also included: a compact list of the remaining notable topics.
 
